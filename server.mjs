@@ -34,7 +34,8 @@ function berlin(now) {
 const profile = login => `<a href="https://profile.intra.42.fr/users/${escape(login)}">${escape(login)}</a>`;
 const hidden = (table, time) => `<input type="hidden" name="table" value="${table}"><input type="hidden" name="time" value="${time}">`;
 
-function tablePage(table, { now, bookings, opens, closes }, message = '', browser) {
+// settings: { login, spots, players } as the player last typed them, rendered escaped into the one tap form.
+function tablePage(table, { now, bookings, opens, closes }, message = '', browser, settings = {}) {
   const { today, minutesNow } = berlin(now);
   const date = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Berlin', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(now);
   // shortcut: compares Berlin wall-clock minutes, wrong only if opening hours span the 02:00–03:00 DST jump.
@@ -47,24 +48,23 @@ function tablePage(table, { now, bookings, opens, closes }, message = '', browse
       : !booking ? ['free', 'Free']
       : booking.players + joined.length >= booking.spots ? ['full', 'Full']
       : ['open', `${escape(booking.spots - booking.players - joined.length)} of ${escape(booking.spots)} spots left`];
-    const login = `<label>Your 42 login <input name="login" required maxlength="32" pattern="[A-Za-z0-9\-]+" autocomplete="username" autocapitalize="none" spellcheck="false"></label>`;
-    // name="slot" makes the panels an exclusive accordion: opening one closes the others, no JS needed.
-    const panel = (verb, action, fields) => `<details name="slot"><summary>${verb}</summary><form method="post" action="${action}" class="book">${hidden(table, time)}<h2>${time} · Table ${table}</h2>${login}${fields}<button type="submit">${verb} ${time}</button></form></details>`;
-    let by = '';
-    let controls = '';
-    if (status === 'free') {
-      controls = panel('Book', '/book', `<fieldset><legend>Game</legend><label><input type="radio" name="spots" value="2" checked> Singles</label><label><input type="radio" name="spots" value="4"> Doubles</label></fieldset><label>Your group fills <input name="players" type="number" min="1" max="4" value="1" required inputmode="numeric"></label>`);
-    }
+    const tap = (verb, extra = '') => `<button form="tap" name="time" value="${time}"${extra}>${verb}</button>`;
+    let text = label;
+    let controls = status === 'free' ? tap('Book') : '';
     if (booking && status !== 'ended') {
-      by = ` · ${profile(booking.login ?? '')}${booking.players > 1 ? ` (group of ${escape(booking.players)})` : ''}${joined.map(p => `, ${profile(p.login)}`).join('')}`;
-      if (status === 'open') controls += panel('Join', '/join', '');
-      if (booking.browser === browser) controls += `<form method="post" action="/cancel">${hidden(table, time)}<button type="submit">Cancel booking</button></form>`;
-      for (const p of joined.filter(p => p.browser === browser)) {
+      const mine = booking.browser === browser;
+      const mineJoined = joined.filter(p => p.browser === browser);
+      const you = mine ? 'You booked' : mineJoined.length ? 'You joined' : '';
+      text = `${you ? `<strong class="you">${you}</strong> · ` : ''}${label} · ${profile(booking.login ?? '')}${booking.players > 1 ? ` (group of ${escape(booking.players)})` : ''}${joined.map(p => `, ${profile(p.login)}`).join('')}`;
+      if (status === 'open' && !you) controls += tap('Join', ' formaction="/join"');
+      if (mine) controls += `<form method="post" action="/cancel">${hidden(table, time)}<button type="submit">Cancel booking</button></form>`;
+      for (const p of mineJoined) {
         controls += `<form method="post" action="/leave">${hidden(table, time)}<input type="hidden" name="login" value="${escape(p.login)}"><button type="submit">Leave as ${escape(p.login)}</button></form>`;
       }
     }
-    items.push(`<li class="slot ${status}"><time>${time}</time><span>${label}${by}</span>${controls && `<div class="controls">${controls}</div>`}</li>`);
+    items.push(`<li class="slot ${status}"><time>${time}</time><span>${text}</span>${controls && `<div class="controls">${controls}</div>`}</li>`);
   }
+  const { spots } = settings;
   const closed = closes * 60 <= minutesNow ? '<p class="notice">Closed for today — every slot has ended. Come back tomorrow.</p>' : '';
   const tab = n => `<a href="/table/${n}"${n === table ? ' aria-current="page"' : ''}>Table ${n}</a>`;
   return layout(`Table ${table} · Ping Pong 42`, `
@@ -72,6 +72,13 @@ function tablePage(table, { now, bookings, opens, closes }, message = '', browse
   <h1>Table ${table}</h1>
   <p class="intro">${date} · German time</p>
   ${message}${closed}
+  <form id="tap" method="post" action="/book" class="settings">
+    <button type="submit" disabled hidden></button>
+    <input type="hidden" name="table" value="${table}">
+    <label class="login">Login <input name="login" value="${escape(settings.login ?? '')}" required maxlength="32" pattern="[A-Za-z0-9\-]+" placeholder="your 42 login" autocomplete="username" autocapitalize="none" spellcheck="false"></label>
+    <fieldset><legend>Game</legend><label><input type="radio" name="spots" value="2"${spots === '4' ? '' : ' checked'}> Singles</label><label><input type="radio" name="spots" value="4"${spots === '4' ? ' checked' : ''}> Doubles</label></fieldset>
+    <label class="players">Players with me <input name="players" type="number" min="1" max="4" value="${escape(settings.players ?? '1')}" required inputmode="numeric"></label>
+  </form>
   <ol class="slots">${items.join('')}</ol>
   <p class="how">Scan the QR code on a table, book a free slot with your 42 login or join an open game, then meet at the table.</p>`);
 }
@@ -102,7 +109,7 @@ function slotOf(form, { now, opens, closes }) {
 
 function loginOf(form) {
   const login = field(form, 'login').trim();
-  if (!/^[A-Za-z0-9-]{1,32}$/.test(login)) throw new Refusal(400, 'Enter your 42 login: letters, digits and hyphens only, no spaces.');
+  if (!/^[A-Za-z0-9-]{1,32}$/.test(login)) throw new Refusal(400, 'Enter your 42 login in the Login field at the top: letters, digits and hyphens only, no spaces.');
   return login;
 }
 
@@ -200,6 +207,8 @@ export function createApp({
     res.setHeader('x-content-type-options', 'nosniff');
     res.setHeader('cache-control', 'no-store');
     const id = req.headers.cookie?.match(/(?:^|;\s*)browser=([0-9a-f-]{36})(?:;|$)/)?.[1];
+    // Only a valid login is prefilled; anything else in the cookie is ignored.
+    const remembered = req.headers.cookie?.match(/(?:^|;\s*)login=([A-Za-z0-9-]{1,32})(?:;|$)/)?.[1] ?? '';
     const action = req.method === 'POST' && actions.get(req.url);
     if (action) {
       const [run, past, refused] = action;
@@ -220,6 +229,9 @@ export function createApp({
       try {
         const { table, time } = run(form, { now: now(), bookings, opens, closes }, browser);
         persist();
+        // Remembers the login for prefill only; ownership stays with the browser cookie. loginOf allowed only [A-Za-z0-9-].
+        const login = form.get('login')?.trim();
+        if (run === book || run === join) res.appendHeader('set-cookie', `login=${login}; HttpOnly; SameSite=Lax; Path=/; Max-Age=31536000`);
         res.writeHead(303, { location: `/table/${table}?${past}=${time}` });
         return res.end();
       } catch (error) {
@@ -228,7 +240,8 @@ export function createApp({
         const table = form.get('table');
         res.writeHead(error.status, { 'content-type': 'text/html; charset=utf-8' });
         return res.end(table === '1' || table === '2'
-          ? tablePage(Number(table), { now: now(), bookings, opens, closes }, notice, browser)
+          ? tablePage(Number(table), { now: now(), bookings, opens, closes }, notice, browser,
+            { login: form.get('login') ?? remembered, spots: form.get('spots'), players: form.get('players') ?? '1' })
           : layout(refused, `<h1>${refused}</h1>${notice}<p><a href="/table/1">Go to table 1</a> · <a href="/table/2">table 2</a></p>`));
       }
     }
@@ -249,7 +262,8 @@ export function createApp({
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       const [key, time] = [...url.searchParams].find(([k, v]) => done.has(k) && /^\d\d:\d\d$/.test(v)) ?? [];
       return res.end(req.method === 'HEAD' ? undefined : tablePage(Number(table[1]), { now: now(), bookings, opens, closes },
-        key ? `<p class="notice success" role="status">${done.get(key).replace('$', time)}</p>` : '', id));
+        key ? `<p class="notice success" role="status">${done.get(key).replace('$', time)}</p>` : '', id,
+        { login: remembered }));
     }
     const asset = assets.get(path);
     if (!asset) {
