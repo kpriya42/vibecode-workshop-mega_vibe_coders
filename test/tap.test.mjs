@@ -30,38 +30,41 @@ test('/ is the booking view for table 1 with the Ping Pong 42 header and a table
   assert.deepEqual(current((await get('/table/1')).html), ['1']);
 });
 
-test('each free, not-ended slot has its own Book form for exactly that slot; others have none', async t => {
+const buttons = body => [...body.matchAll(/<button form="tap"([^>]*)>([^<]*)<\/button>/g)].map(m => [m[1], m[2]]);
+
+test('each free, not-ended slot has one Book button and each open game one Join button, all submitting the one settings form', async t => {
   const get = await server(t, [
     { table: 2, start: '2026-10-20T14:00', spots: 2, players: 1, login: 'ben42', browser: 'x', joined: [] },
     { table: 2, start: '2026-10-20T15:00', spots: 2, players: 2, login: 'ben42', browser: 'x', joined: [] },
   ]);
-  const list = rows((await get('/table/2')).html);
+  const html = (await get('/table/2')).html;
+  const form = html.match(/<form id="tap" method="post" action="\/book"[^>]*>([^]*?)<\/form>/)[1];
+  assert.match(form, /<input type="hidden" name="table" value="2">/);
+  assert.match(form, /name="login"/);
+  assert.match(form, /name="spots" value="2" checked/);
+  assert.match(form, /name="spots" value="4"/);
+  assert.match(form, /name="players"[^>]*value="1"/);
+  // Enter in the login field must not book the first free slot: the form's default button is disabled.
+  assert.match(form, /^[^]*?<button[^>]*\bdisabled\b[^>]*>/);
+  assert.doesNotMatch(form.slice(0, form.search(/<button[^>]*disabled/)), /<button/);
+  const list = rows(html);
   for (const [time, [status, body]] of Object.entries(list)) {
-    const forms = [...body.matchAll(/action="\/book"/g)].length;
-    if (status === 'free') {
-      assert.equal(forms, 1, time);
-      assert.match(body, /<summary[^>]*>Book<\/summary>/, time);
-      assert.match(body, new RegExp(`name="table" value="2"><input type="hidden" name="time" value="${time}"`), time);
-      assert.match(body, /name="login"/, time);
-      assert.match(body, /name="spots"/, time);
-      assert.match(body, /name="players"/, time);
-      assert.match(body, new RegExp(`${time} · Table 2`), time);
-    } else assert.equal(forms, 0, time);
+    const tap = buttons(body);
+    if (status === 'free') assert.deepEqual(tap, [[` name="time" value="${time}"`, 'Book']], time);
+    else if (status === 'open') assert.deepEqual(tap, [[` name="time" value="${time}" formaction="/join"`, 'Join']], time);
+    else assert.deepEqual(tap, [], time);
   }
   assert.equal(list['11:30'][0], 'ended');
   assert.equal(list['14:00'][0], 'open');
-  assert.match(list['14:00'][1], /<summary[^>]*>Join<\/summary>/);
   assert.equal(list['15:00'][0], 'full');
-  assert.doesNotMatch(list['15:00'][1], /<summary/);
 });
 
-test('there is no time dropdown, and slot panels open one at a time', async t => {
+test('there is no time dropdown and no per-slot panel', async t => {
   const { html } = await (await server(t))('/table/1');
-  assert.doesNotMatch(html, /<select name="time"/);
+  assert.doesNotMatch(html, /<select/);
   assert.doesNotMatch(html, /<option value="\d\d:\d\d"/);
-  const panels = [...html.matchAll(/<details[^>]*>/g)].map(m => m[0]);
-  assert.ok(panels.length > 0);
-  assert.ok(panels.every(p => p.includes('name="slot"')));
+  assert.doesNotMatch(html, /<details/);
+  assert.equal([...html.matchAll(/name="login"/g)].length, 1);
 });
 
 test('junk or prototype query parameters on / render the page without injecting markup', async t => {

@@ -152,9 +152,9 @@ test('an oversized body is refused and the app keeps serving', async t => {
 test('the table page offers a booking form only on free, not-ended slots', async t => {
   const { origin } = await server(t, [{ table: 2, start: '2026-10-20T14:00', spots: 2, players: 1, login: 'ben42', browser: 'x' }]);
   const html = await (await fetch(`${origin}/table/2`)).text();
-  assert.match(html, /<form method="post" action="\/book"/);
+  assert.match(html, /<form id="tap" method="post" action="\/book"/);
   assert.match(html, /name="table" value="2"/);
-  const bookable = [...html.matchAll(/action="\/book" class="book"><input type="hidden" name="table" value="2"><input type="hidden" name="time" value="(\d\d:\d\d)"/g)].map(m => m[1]);
+  const bookable = [...html.matchAll(/<button form="tap" name="time" value="(\d\d:\d\d)">Book</g)].map(m => m[1]);
   assert.equal(bookable[0], '12:00');
   assert.ok(!bookable.includes('11:30'));
   assert.ok(!bookable.includes('14:00'));
