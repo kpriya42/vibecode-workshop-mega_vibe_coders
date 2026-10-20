@@ -69,3 +69,45 @@ A first attempt at step 5 used `pkill -f "node server.mjs"`, which also matched 
 - If the data file is damaged by something else while the app runs, a later save failure re-reads it, and that load error is not handled (the request would error). Treated as out of scope.
 - `mkdirSync(..., { mode: 0o700 })` also applies 700 to parent directories it creates. On the guest, `~/.local/share` already exists, so only `vibecode-workshop/data` (or just `data`) is new.
 - Not rebased on M1.4. After M1.4 merges, add `persist()` after its action call and re-run the suite.
+
+## Integration with M1.4
+
+Same coder session (Claude subagent, Agent tool), continuing after Codex approved 7d56dd1.
+
+- `d74d4a92db7b59c7f6e76c2169cd3b311aedd263`: commits review.md unchanged, `docs: M1.5 review round 1 (approve on 7d56dd1)`.
+- `git fetch origin && git merge origin/main`, with origin/main at `0187eaa864b0ee89b520577652b6df613af5b9a4` (M1.4 PR #7, M1.7, docs PR #5). A merge, not a rebase, so the reviewed commits are unchanged.
+- **Conflicts:** one, in `server.mjs` at the POST handler, where my `book(...)` + `persist()` met M1.4's shared `run(form, ...)` dispatcher for book, join, cancel and leave. Resolved by taking M1.4's dispatcher and adding a single `persist()` after `run(...)` and before the 303. Every successful action now saves through that one line, and a Refusal throws before it, so a refused write saves nothing.
+- **A second clash git did not flag:** my `import { join } from 'node:path'` collided with M1.4's `function join` (a SyntaxError at load time). I dropped the import and built the default path as `` `${homedir()}/.local/share/vibecode-workshop/data` ``.
+- Merge commit: `6bb7dd8d0f19212877fb7b207b04a2c04f39e52e` (server.mjs resolution only).
+- Test commit: `b131108a1fa8263283ae4f0f99433926351f7cb3`. Note: at the merge commit on its own, 2 of the earlier persist tests have stale expectations. M1.4 added `joined: []` to the stored shape and wraps the login in a profile link. The test commit updates them, so check green at b131108, not at 6bb7dd8.
+
+### TDD
+
+New tests in `test/persist.test.mjs`:
+- join survives a restart, and only the joining browser can leave after it (another browser gets 403), and the leave also survives a restart;
+- cancel survives a restart, and only the booking browser can cancel after it (another browser gets 403), and the cancel also survives a restart;
+- six refused writes (a join on a full game, a join on a free slot, a leave from another browser, a leave by someone not in the game, a cancel by a non-booker, a cancel of a free slot) each answer 4xx and leave the file byte-identical;
+- a failed save of a join answers 500 and the join is forgotten.
+
+Red: with the conflict resolved to M1.4's dispatcher without `persist()`, `TZ=UTC node --test test/persist.test.mjs` gave 2 pass and 10 fail. Green after adding the one `persist()` line, except the stale profile-link assertion in test 1, which I then updated to allow the `<a>` tag.
+
+### Commands and results (Node v22.23.3)
+
+| Command | Result |
+|---|---|
+| `TZ=UTC npm test` | 75 tests, 75 pass, 0 fail, 0 skipped |
+| `TZ=Europe/Berlin npm test` | 75 tests, 75 pass, 0 fail, 0 skipped |
+| `ls ~/.local/share/vibecode-workshop` | does not exist (no test wrote into the real home) |
+
+### Manual check (real `npm start`, data under /tmp/m15-manual2, port 3916, removed afterwards; killed only by exact PIDs)
+
+At 15:40 Berlin time:
+1. `VC_DATA_DIR=/tmp/m15-manual2/data PORT=3916 HOST=127.0.0.1 npm start`. Cookie jar A booked table 1 at 17:30 as jwosylu (doubles, group of 1): 303 to `?booked=17:30`. Cookie jar B joined as ben42: 303 to `?joined=17:30`. The file held one booking with `joined: [{ login: 'ben42', browser: <B's id> }]`.
+2. `kill -TERM <node pid> <npm pid>`: npm exited 143. Started `npm start` again on the same data.
+3. `/table/1` with cookie B showed `2 of 4 spots left · jwosylu, ben42` (both as profile links), with a "Leave as ben42" form for B and a Join form.
+4. Ownership survived the restart: leave ben42 from cookie A returned 403, and cancel from cookie B returned 403.
+5. Stopped by exact PIDs. The port was free afterwards.
+
+### Skipped
+
+The same as above: no browser check (this merge changes no UI), and no hosted or redeploy check (needs a release instruction). The merged head needs a fresh review.
