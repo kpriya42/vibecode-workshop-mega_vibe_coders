@@ -32,3 +32,12 @@ footer { border-top: 1px solid #34363b; color: #b9b4aa; font-size: .8rem; line-h
 .slot.open { border-color: #ff8b54; } .slot.open span { color: #ff8b54; }
 .slot.full span { color: #b9b4aa; }
 .slot.ended { opacity: .45; border-style: dashed; }
+.notice.success { border-color: #6fcf8f; }
+.notice.error { border-color: #ff6b6b; color: #ffb3b3; }
+.book { display: grid; gap: 1rem; margin: 2rem 0; padding-top: 1.5rem; border-top: 1px solid #34363b; }
+.book h2 { margin: 0; }
+.book label { display: grid; gap: .4rem; color: #b9b4aa; }
+.book input, .book select, .book button { width: 100%; min-height: 3rem; padding: .6rem .8rem; font: inherit; color: inherit; background: #1f2128; border: 1px solid #55524b; border-radius: .3rem; }
+.book input:focus-visible, .book select:focus-visible, .book button:focus-visible { outline: 3px solid #ff8b54; outline-offset: 2px; }
+.book button { background: #ff8b54; color: #15171c; font-weight: 700; border: 0; cursor: pointer; }
+.book button:hover { background: #ffa67b; }
