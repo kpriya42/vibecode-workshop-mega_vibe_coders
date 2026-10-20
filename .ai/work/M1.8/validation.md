@@ -71,3 +71,27 @@ Design judgement from the screenshots: on a phone the header shows the orange wo
 - `<details name>` exclusivity needs Chrome 120+, Safari 17.2+ or Firefox 130+. Older browsers allow several open panels, which still work.
 - No hosted or deployed check. No real-device test (phone width was emulated). No Safari or Firefox rendering check.
 - The merge with M1.5 (persistence, POST side) isn't tested here and needs re-review, as the brief says.
+
+## Merge with M1.5
+
+At the coordinator's request I merged `origin/main` at `7ee2064bb8642dc107074fdbf8fba3f223b0ae31` (M1.5 persistence) into this branch with `git fetch origin && git merge origin/main`, using a merge, not a rebase.
+
+- Merge commit: `becab3baf98523cead6d811fae8cf42f4c79d450`. **No conflicts.** Git merged `server.mjs` automatically. M1.5 changed imports, `createApp` and the POST handler; M1.8 changed `assets`, `tablePage` and the `/` route.
+- Clash check:
+  - The top-level names in `server.mjs` are unique. `store.mjs` imports `join` from `node:path`, but only inside its own module, so it doesn't clash with `server.mjs`'s `join` action.
+  - `node --check server.mjs` is clean.
+  - The `/` route line and `<details name="slot">` panels are present, and `index.html` is not referenced.
+- Tests on Node v22.23.3 after `npm ci`:
+  - `TZ=UTC npm test`: tests 79, pass 79, fail 0.
+  - `TZ=Europe/Berlin npm test`: tests 79, pass 79, fail 0.
+  - The new count includes M1.5's tests. I didn't change any assertion.
+- Real entry point: `PORT=4555 HOST=127.0.0.1 VC_DATA_DIR=/tmp/m18/data APP_REVISION=merge-check node server.mjs` logged "listening". `/api/health` returned `{"ok":true,"revision":"merge-check"}` and `/` returned 200. SIGTERM exited with 0.
+- Browser check at 390×844, using the same CDP two-profile script as above:
+  - Setup: `/tmp/m18/launch2.mjs` runs `createApp` with the fixed clock and `dataDir: VC_DATA_DIR=/tmp/m18/data`. The profiles and the data directory were cleared first.
+  - A opened `/`, switched to Table 2, tapped Book on 14:00 and booked as jwosylu, singles, group 1. The notice read "Booked 14:00…" and the row read "1 of 2 spots left · jwosylu".
+  - B opened `/table/2`, tapped Join and joined as ben42. The row read "Full · jwosylu, ben42", and B saw a Leave button.
+  - A reloaded and saw the ben42 profile link and Cancel. No horizontal scroll, and the smallest tap target was 44px.
+  - `bookings.json` held the one booking, with ben42 in `joined`.
+  - I sent SIGTERM to the app by its exact PID (79949). It exited with code 0, and health was refused while it was down. I then restarted it (new PID 80439).
+  - After the restart, A's `/table/2` showed 14:00 as "Full · jwosylu, ben42" with the ben42 profile link and A's Cancel. B still had Leave and no Cancel, so ownership survived through the cookies. Screenshot: `/tmp/m18/390x844-A5-after-restart.png`.
+- I didn't re-run the 1280×800 journey after the merge. The merge changed no rendering code.
