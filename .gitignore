@@ -8,3 +8,7 @@ coverage/
 .DS_Store
 .ai/private/
 .ai/browser/
+
+# Local booking data, if VC_DATA_DIR ever points inside the checkout
+/data/
+bookings.json*
