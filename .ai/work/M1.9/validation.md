@@ -122,3 +122,48 @@ Final state:
 - I took no screenshot of the server's empty-login refusal page, because the browser's `required` check stops the request first. That page is covered by HTTP tests.
 - Only the login is remembered. Singles|Doubles and the group size reset to Singles and 1 on a fresh visit, but are kept on a refused submit.
 - A browser that changes its login keeps its earlier bookings, which is unchanged behaviour. The remembered login cookie is overwritten by the latest successful book or join.
+
+## Round 2 — fix for review P2 (settings reset after a successful tap)
+
+- Review: `.ai/work/M1.9/review.md` round 1 (Codex), REQUEST CHANGES on `fa68a4b`. I committed it unchanged as `docs: M1.9 review round 1 (request changes)`.
+- Fix commit: `a3164af36ec050c39d4d3f115579e206db2641a5`. Head for re-review: the commit that adds this section.
+- Coder: the same Claude subagent as round 1. Node v22.23.3.
+
+### Change
+
+- On a successful `/book` or `/join`, the response also sets `game=<spots>-<players>; HttpOnly; SameSite=Lax; Path=/; Max-Age=31536000`, but only when the pair is valid: `2-1`, `2-2` or `4-1` to `4-4`.
+  - The check matters for joins. Join buttons submit the same bar form, so a join carries the bar's settings and keeps them, but `/join` doesn't validate spots or players.
+- On GET, the bar reads the `game` cookie only if it matches that same pattern. Anything else falls back to Singles and 1.
+- A refused cancel or leave, whose form has no spots or players, falls back to the cookie.
+- No server validation, ownership or persistence change. A cookie is the same approach as the remembered login, and it works without JavaScript.
+
+### Tests first
+
+- Added two tests to `test/remember.test.mjs`:
+  - "Doubles and a group of 2 stay set across consecutive taps and a join in between". It uses a cookie jar: Book 14:00 with Doubles/2, join 13:00, read the bar and Book 14:30 with what the bar shows. Both bookings must store 4/2.
+  - "junk game settings fall back to Singles and 1 and are never rendered". The cookie values tried are `3-1`, `2-3`, `4-5`, `4-0`, `"><b>x`, `4-2x` and an empty value. A join posting junk spots and players still joins but sets no `game` cookie.
+- Before the fix, the first test failed (1 fail, 9 pass). The junk test is a guard that passed both before and after.
+
+### Commands and results
+
+```
+TZ=UTC npm test             -> tests 89, pass 89, fail 0, skipped 0
+TZ=Europe/Berlin npm test   -> tests 89, pass 89, fail 0, skipped 0
+```
+
+### Headless check at 390x844
+
+- Script: `/tmp/m19/settings.mjs`. It uses the same launcher with a fixed clock of 12:00 Berlin, one fresh profile, and runs once with scripts on and once with `Emulation.setScriptExecutionDisabled`. Logs: `/tmp/m19/run-r2-390*.log`.
+- In both runs:
+  - A typed `jwosylu`, tapped Doubles and set Players with me to 2, so the bar read 4/2.
+  - A tapped Book 14:00. After the redirect the bar still read 4/2, and the row read `You booked · 2 of 4 spots left · jwosylu (group of 2)`.
+  - A tapped Book 14:30. The bar still read 4/2.
+  - `bookings.json` stored 14:00 and 14:30, both with `spots: 4, players: 2`.
+- scrollWidth/clientWidth was 390/390, and no control was under 44px.
+- I looked at the screenshot `/tmp/m19/390x844-r2-A2-after-second.png`. Doubles is selected, the field shows 2, and both rows read "You booked".
+- The driver killed only its own app and Chrome PIDs.
+
+### Skipped
+
+- I didn't rerun the two-profile journey at 1280x800, because the round-2 diff touches no markup or CSS.
+- The settings persist for a year, like the login cookie. The review said that is not required, and it is harmless.
