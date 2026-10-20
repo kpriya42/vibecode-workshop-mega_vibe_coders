@@ -91,7 +91,8 @@ function book(form, { now, bookings, opens, closes }, browser) {
     throw new Refusal(400, `Your group must fill between 1 and ${spots} spots.`);
   }
   const minutes = Number(time.slice(0, 2)) * 60 + Number(time.slice(3));
-  if (minutes % 30 || minutes < opens * 60 || minutes >= closes * 60) throw new Refusal(400, `${time} is not a slot within opening hours.`);
+  // The round trip to HH:MM rejects out-of-range parts like 12:60, which would otherwise alias 13:00.
+  if (time !== `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}` || minutes % 30 || minutes < opens * 60 || minutes >= closes * 60) throw new Refusal(400, `${time} is not a slot within opening hours.`);
   const { today, minutesNow } = berlin(now);
   if (minutes + 30 <= minutesNow) throw new Refusal(409, `The ${time} slot has already ended.`);
   const start = `${today}T${time}`;

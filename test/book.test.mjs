@@ -182,3 +182,14 @@ test('a client that disconnects mid-body does not crash the app', async t => {
   assert.equal((await book(valid)).status, 303);
   assert.equal(bookings.length, 1);
 });
+
+test('times that are not a real slot start, like 12:60, are refused and book nothing', async t => {
+  const { bookings, book } = await server(t);
+  for (const time of ['12:60', '12:90', '13:60', '08:60', '17:90', '99:00', '1:00', '14:00:00', ' 14:00']) {
+    const response = await book({ ...valid, time });
+    assert.equal(response.status, 400, time);
+    assert.match(await response.text(), /not a slot|time/i, time);
+  }
+  assert.equal(bookings.length, 0);
+  assert.equal((await book({ ...valid, time: '13:00' })).status, 303);
+});
