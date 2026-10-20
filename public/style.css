@@ -21,3 +21,14 @@ h2 { font-size: 1.25rem; letter-spacing: -.02em; margin: 1rem 0 .65rem; }
 .next { font-size: .85rem; color: #b9b4aa; margin-top: 1.25rem; line-height: 1.6; }
 footer { border-top: 1px solid #34363b; color: #b9b4aa; font-size: .8rem; line-height: 1.6; }
 @media (max-width: 42rem) { .steps { grid-template-columns: 1fr; gap: 1.75rem; } header { flex-wrap: wrap; } footer { align-items: flex-start; flex-direction: column; } }
+.table { max-width: 40rem; }
+.table h1 { font-size: clamp(2rem, 6vw, 3rem); margin: 1rem 0 .5rem; }
+.table nav a { display: inline-block; padding: .75rem 0; }
+.notice { border-left: 3px solid #ff8b54; padding: .5rem 1rem; }
+.slots { list-style: none; padding: 0; margin: 1.5rem 0; display: grid; gap: .5rem; }
+.slot { display: flex; justify-content: space-between; align-items: center; gap: 1rem; min-height: 3rem; padding: .75rem 1rem; border: 1px solid #55524b; border-radius: .3rem; }
+.slot time { font: 700 1.1rem ui-monospace, monospace; }
+.slot.free { border-color: #6fcf8f; } .slot.free span { color: #6fcf8f; }
+.slot.open { border-color: #ff8b54; } .slot.open span { color: #ff8b54; }
+.slot.full span { color: #b9b4aa; }
+.slot.ended { opacity: .45; border-style: dashed; }
