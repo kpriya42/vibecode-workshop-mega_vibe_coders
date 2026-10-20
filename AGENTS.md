@@ -24,6 +24,16 @@ Read IDEA.md, PLAN.md, .ai/rules.md and the role brief for your assignment. Insp
 9. Never delete app data, another team's files or hosting resources to repair your app. Diagnose and ask the organiser for platform failures.
 10. Before ending a session, save a short handoff in `.ai/sessions/`, update `.ai/context.md`, and add a pitfall only when there is a new lesson.
 
+## Our team setup
+
+Agreed with the human owner (jasuoh) on 2026-10-20.
+
+- **Tools:** Claude Code (`claude`) and Codex CLI (`codex`), each signed in with a teammate's own account.
+- **Roles by tool:** project lead, milestone lead, coder and committer run in Claude Code. The reviewer runs in Codex, so the writer and the reviewer are different model families. If Codex is unavailable, use a fresh Claude session and say so in review.md. Never claim a Codex review that didn't run.
+- **Dispatch:** a lead may start real role sessions itself. Use Claude subagents (the Agent tool, one fresh agent per role) or `claude -p` for coders, and `codex exec` or `codex review` from the shell for reviewers. Record the actual command or agent used in the step's validation.md or review.md.
+- **Skills:** coders use `ponytail` (the smallest change that meets the brief) and `superpowers:test-driven-development` where behaviour can be tested. Coders may self-check with `ponytail-review` before handing over, but that is not the independent review.
+- **Git and GitHub:** `gh` is authenticated as jasuoh. The committer may push step branches, open PRs against `kpriya42/vibecode-workshop-mega_vibe_coders` (always pass `--repo`) and merge them after an independent APPROVE on the exact head SHA. Planning-only docs the human agreed directly may merge without a separate review. Deploying still needs the team's explicit release instruction.
+
 ## Authoritative homes
 
 IDEA.md owns the problem. PLAN.md owns planned outcomes, step status and dependencies. `.ai/context.md` owns the current focus. Step evidence owns proof and review. Session files own decisions and handoff history. GitHub PR state owns whether a PR merged; link it rather than maintain a second board.
