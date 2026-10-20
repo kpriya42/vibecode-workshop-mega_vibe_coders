@@ -18,7 +18,8 @@ async function server(t, bookings = []) {
     body: new URLSearchParams(fields),
   });
   const page = async (cookie, table = 2) => (await fetch(`${origin}/table/${table}`, { headers: cookie ? { cookie } : {} })).text();
-  return { bookings, post, page };
+  const health = () => fetch(`${origin}/api/health`);
+  return { bookings, post, page, health };
 }
 
 const singles = (extra = {}) => ({ table: 2, start: '2026-10-20T14:00', spots: 2, players: 1, login: 'jwosylu', browser: id(A), joined: [], ...extra });
@@ -209,5 +210,18 @@ test('leaving as someone not in the game is refused and changes nothing', async 
   assert.equal((await post('/leave', { ...join, login: 'carl' }, B)).status, 404);
   assert.equal((await post('/leave', { ...join, login: 'jwosylu' }, A)).status, 404);
   assert.equal((await post('/leave', { ...join, time: '15:00' }, B)).status, 409);
+  assert.equal(snapshot(bookings), before);
+});
+
+test('query keys that are not notices, like toString or __proto__, leave the app serving and bookings unchanged', async t => {
+  const { bookings, page, health } = await server(t, [singles()]);
+  const before = snapshot(bookings);
+  for (const key of ['toString', 'constructor', '__proto__', 'hasOwnProperty', 'valueOf', 'nope']) {
+    const html = await page(undefined, `2?${key}=14:00`);
+    assert.match(html, /<h1>Table 2<\/h1>/, key);
+    assert.doesNotMatch(html, /role="status"/, key);
+  }
+  assert.equal((await health()).status, 200);
+  assert.match(await page(), /jwosylu/);
   assert.equal(snapshot(bookings), before);
 });

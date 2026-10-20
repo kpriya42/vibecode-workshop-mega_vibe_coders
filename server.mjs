@@ -170,7 +170,13 @@ const actions = new Map([
   ['/cancel', [cancel, 'cancelled', 'Not cancelled']],
   ['/leave', [leave, 'left', 'Not left']],
 ]);
-const done = { booked: 'Booked $. See you at the table!', joined: 'Joined $. See you at the table!', cancelled: 'Cancelled $. The slot is free again.', left: 'Left $. Your spot is open again.' };
+// A Map, not an object, so query keys like toString cannot reach inherited properties.
+const done = new Map([
+  ['booked', 'Booked $. See you at the table!'],
+  ['joined', 'Joined $. See you at the table!'],
+  ['cancelled', 'Cancelled $. The slot is free again.'],
+  ['left', 'Left $. Your spot is open again.'],
+]);
 
 const maxBody = 4096;
 
@@ -233,9 +239,9 @@ export function createApp({
     const table = path.match(/^\/table\/([12])$/);
     if (table) {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-      const [key, time] = [...url.searchParams].find(([k, v]) => done[k] && /^\d\d:\d\d$/.test(v)) ?? [];
+      const [key, time] = [...url.searchParams].find(([k, v]) => done.has(k) && /^\d\d:\d\d$/.test(v)) ?? [];
       return res.end(req.method === 'HEAD' ? undefined : tablePage(Number(table[1]), { now: now(), bookings, opens, closes },
-        key ? `<p class="notice success" role="status">${done[key].replace('$', time)}</p>` : '', id));
+        key ? `<p class="notice success" role="status">${done.get(key).replace('$', time)}</p>` : '', id));
     }
     const asset = assets.get(path);
     if (!asset) {
