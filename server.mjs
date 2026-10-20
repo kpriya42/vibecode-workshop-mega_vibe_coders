@@ -2,6 +2,9 @@ import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+import { load, save } from './store.mjs';
 
 const assets = new Map([
   ['/', ['index.html', 'text/html; charset=utf-8']],
@@ -109,10 +112,21 @@ const notFound = layout('Not found', `<h1>Not found</h1><p class="intro">This pa
 export function createApp({
   revision = process.env.APP_REVISION || 'development',
   now = () => new Date(),
-  bookings = [],
+  dataDir, // where bookings.json lives; without it bookings are kept in memory only
+  bookings = dataDir ? load(dataDir) : [],
   opens = 9,
   closes = 18,
 } = {}) {
+  // Every successful change calls this before its success response. On failure the unsaved change is dropped.
+  const persist = () => {
+    if (!dataDir) return;
+    try { save(dataDir, bookings); }
+    catch (error) {
+      console.error('Could not save bookings:', error.message);
+      bookings.splice(0, bookings.length, ...load(dataDir));
+      throw new Refusal(500, 'It could not be saved. Please try again.');
+    }
+  };
   return http.createServer(async (req, res) => {
     res.setHeader('x-content-type-options', 'nosniff');
     res.setHeader('cache-control', 'no-store');
@@ -134,6 +148,7 @@ export function createApp({
       const form = new URLSearchParams(Buffer.concat(chunks).toString());
       try {
         const booking = book(form, { now: now(), bookings, opens, closes }, browser);
+        persist();
         res.writeHead(303, { location: `/table/${booking.table}?booked=${booking.start.slice(11)}` });
         return res.end();
       } catch (error) {
@@ -185,7 +200,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const port = Number(process.env.PORT || 3000);
   const host = process.env.HOST || '0.0.0.0';
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('PORT must be 1–65535');
-  const app = createApp();
+  let app;
+  try { app = createApp({ dataDir: process.env.VC_DATA_DIR || join(homedir(), '.local/share/vibecode-workshop/data') }); }
+  catch (error) { console.error(`Not starting: ${error.message}`); process.exit(1); }
   app.on('error', error => { console.error(error.message); process.exitCode = 1; });
   app.listen(port, host, () => console.log(`Workshop app listening on ${host}:${port}`));
   for (const signal of ['SIGINT', 'SIGTERM']) {
