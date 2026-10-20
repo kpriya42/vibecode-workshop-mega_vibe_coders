@@ -41,3 +41,12 @@ footer { border-top: 1px solid #34363b; color: #b9b4aa; font-size: .8rem; line-h
 .book input:focus-visible, .book select:focus-visible, .book button:focus-visible { outline: 3px solid #ff8b54; outline-offset: 2px; }
 .book button { background: #ff8b54; color: #15171c; font-weight: 700; border: 0; cursor: pointer; }
 .book button:hover { background: #ffa67b; }
+.slot { flex-wrap: wrap; }
+.slot span { overflow-wrap: anywhere; }
+.controls { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: .5rem; }
+.controls form { display: flex; flex-wrap: wrap; gap: .5rem; }
+.controls input, .controls button { min-height: 2.75rem; padding: .4rem .7rem; font: inherit; color: inherit; background: #1f2128; border: 1px solid #55524b; border-radius: .3rem; }
+.controls input { width: 12rem; max-width: 100%; }
+.controls button { cursor: pointer; }
+.controls button:hover { border-color: #ff8b54; }
+.controls input:focus-visible, .controls button:focus-visible { outline: 3px solid #ff8b54; outline-offset: 2px; }

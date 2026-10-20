@@ -12,27 +12,28 @@ Project lead → one milestone lead → one step at a time through coder → ind
 
 ## M1 — Book or join a table tennis slot
 
-Milestone lead: not yet started (a fresh session must take it). Human owner: jasuoh. Release: only after the team accepts the journey.
+Milestone lead: Claude Code session started 2026-10-20 (handoffs in .ai/sessions/). Human owner: jasuoh. Release: only after the team accepts the journey.
 
 | Step | Outcome | Depends on | Human owner | State / PR |
 |---|---|---|---|---|
-| M1.1 | Our fork runs at the assigned URL and reports its deployed revision | Organiser handout | jasuoh | blocked: no handout yet |
-| M1.2 | Each table's page shows today's slots as free, open or full | M1.1 for hosted checks; can be coded locally | jasuoh | draft |
-| M1.3 | A player books a slot with their intra login | M1.2 | jasuoh | draft |
-| M1.4 | Others join open games and see who is playing; only the right device can cancel or leave | M1.3 | jasuoh | draft |
-| M1.5 | Bookings survive reload, other devices, restart and redeploy | M1.3 | jasuoh | draft |
+| M1.1 | Our fork runs at the assigned URL and reports its deployed revision | Organiser handout | jasuoh | deployed 279eb16 to team-02; phone check and collaborator access open ([evidence](.ai/work/M1.1/validation.md)) |
+| M1.2 | Each table's page shows today's slots as free, open or full | M1.1 for hosted checks; can be coded locally | jasuoh | merged [PR #3](https://github.com/kpriya42/vibecode-workshop-mega_vibe_coders/pull/3); live |
+| M1.3 | A player books a slot with their intra login | M1.2 | jasuoh | merged [PR #4](https://github.com/kpriya42/vibecode-workshop-mega_vibe_coders/pull/4); live |
+| M1.4 | Others join open games and see who is playing; only the right device can cancel or leave | M1.3 | jasuoh | in progress (`m1.4-join-leave`) |
+| M1.5 | Bookings survive reload, other devices, restart and redeploy | M1.3 | jasuoh | in progress (`m1.5-persistence`, parallel with M1.4; rebase and re-review after M1.4) |
 | M1.6 | Real players use the two QR stickers; observed failures are corrected | M1.1–M1.5 | jasuoh | draft |
+| M1.7 | `/` is a Ping Pong 42 front page that leads to both tables | M1.2 | jasuoh | in progress (`m1.7-front-page`) |
 
 ### M1.1 — The live starting point
 
 Already done: the team fork exists (`kpriya42/vibecode-workshop-mega_vibe_coders`) and `npm start` works locally.
 
-Blocked: we have no organiser handout (team number, SSH command, key, known hosts, URL). Ask the organiser for it; see docs/connect.md.
+Handout received 2026-10-20 (team-02, https://team-02.intra.land). Connection details stay on laptops, not in the repo.
 
 - [ ] Every teammate has collaborator access to the same team fork.
-- [ ] The assigned SSH connection reaches our team environment as `vc-team`.
-- [ ] Our page is reachable at the assigned HTTPS URL.
-- [ ] `/api/health` reports the revision we intended to deploy (`npm run smoke` from a laptop).
+- [x] The assigned SSH connection reaches our team environment as `vc-team`.
+- [x] Our page is reachable at the assigned HTTPS URL.
+- [x] `/api/health` reports the revision we intended to deploy (`npm run smoke` from a laptop).
 - [ ] Another teammate opens the page on a phone.
 
 ### M1.2 — Today's slots per table
@@ -74,6 +75,14 @@ Blocked: we have no organiser handout (team number, SSH command, key, known host
 - Print two QR stickers (any free generator) pointing to `/table/1` and `/table/2` on the live URL.
 - At least two real players, on their own phones, complete the IDEA.md proof journey.
 - Record one observed problem, the resulting acceptance criterion and the result after correction. New scope becomes a new step.
+
+### M1.7 — Front page
+
+Added 2026-10-20 at jasuoh's request. Static landing page named "Ping Pong 42" (jasuoh chose it over a live status summary).
+
+- `/` names the app, says what it does in one line, and links to `/table/1` and `/table/2`.
+- A three-step "how it works" that promises only built features.
+- No workshop-starter wording or links remain; usable at phone width.
 
 ## M2 — Improve the demonstrated journey
 
