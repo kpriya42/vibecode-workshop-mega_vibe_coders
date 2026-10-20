@@ -38,7 +38,7 @@ test('a booking survives a restart with the same login and browser id', async t 
 
   const second = await server(t, dir);
   const html = await (await fetch(`${second.origin}/table/2`)).text();
-  assert.match(html, /<time>14:00<\/time><span>1 of 2 spots left · jwosylu/);
+  assert.match(html, /<time>14:00<\/time><span>1 of 2 spots left · <a [^>]*>jwosylu</);
   assert.equal(saved(dir)[0].browser, id);
   // The kept browser id still identifies the booker after restart: the same browser rebooking the slot is refused as taken.
   assert.equal((await second.book(valid, { cookie: `browser=${id}` })).status, 409);
@@ -49,7 +49,7 @@ test('the booking is in the file when the success response arrives', async t => 
   const { book } = await server(t, dir);
   assert.equal((await book(valid)).status, 303);
   assert.deepEqual({ ...saved(dir)[0], browser: 'x' },
-    { table: 2, start: '2026-10-20T14:00', spots: 2, players: 1, login: 'jwosylu', browser: 'x' });
+    { table: 2, start: '2026-10-20T14:00', spots: 2, players: 1, login: 'jwosylu', browser: 'x', joined: [] });
 });
 
 test('a refused request writes nothing', async t => {
@@ -107,4 +107,81 @@ test('concurrent bookings on different slots are both saved', async t => {
   const statuses = await Promise.all(['14:00', '14:30', '15:00'].map(time => book({ ...valid, time }).then(r => r.status)));
   assert.deepEqual(statuses, [303, 303, 303]);
   assert.deepEqual(saved(dir).map(b => b.start.slice(11)).sort(), ['14:00', '14:30', '15:00']);
+});
+
+const A = 'browser=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const B = 'browser=bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const C = 'browser=cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+const post = (origin, path, fields, cookie) => fetch(origin + path, {
+  method: 'POST', redirect: 'manual', headers: { cookie }, body: new URLSearchParams(fields),
+});
+const slot14 = { table: '2', time: '14:00' };
+const slotText = async (origin, cookie) => (await (await fetch(`${origin}/table/2`, { headers: { cookie } })).text())
+  .match(/<li class="slot \w+"><time>14:00<\/time>.*?<\/li>/)[0];
+
+test('a join survives a restart and only the joining browser can still leave', async t => {
+  const dir = tempDir(t);
+  const first = await server(t, dir);
+  assert.equal((await first.book(valid, { cookie: A })).status, 303);
+  assert.equal((await post(first.origin, '/join', { ...slot14, login: 'ben42' }, B)).status, 303);
+  await first.close();
+
+  const second = await server(t, dir);
+  const html = await slotText(second.origin, B);
+  assert.match(html, /jwosylu.*ben42/);
+  assert.match(html, /Leave as ben42/);
+  assert.equal((await post(second.origin, '/leave', { ...slot14, login: 'ben42' }, C)).status, 403);
+  assert.equal((await post(second.origin, '/leave', { ...slot14, login: 'ben42' }, B)).status, 303);
+  await second.close();
+
+  const third = await server(t, dir);
+  assert.doesNotMatch(await slotText(third.origin, B), /ben42/);
+  assert.deepEqual(saved(dir)[0].joined, []);
+});
+
+test('a cancel survives a restart and only the booking browser can cancel after one', async t => {
+  const dir = tempDir(t);
+  const first = await server(t, dir);
+  assert.equal((await first.book(valid, { cookie: A })).status, 303);
+  await first.close();
+
+  const second = await server(t, dir);
+  assert.match(await slotText(second.origin, A), /Cancel booking/);
+  assert.equal((await post(second.origin, '/cancel', slot14, B)).status, 403);
+  assert.equal((await post(second.origin, '/cancel', slot14, A)).status, 303);
+  await second.close();
+
+  const third = await server(t, dir);
+  assert.match(await slotText(third.origin, A), /Free/);
+  assert.deepEqual(saved(dir), []);
+});
+
+test('refused joins, leaves and cancels leave the file unchanged', async t => {
+  const dir = tempDir(t);
+  const { origin, book } = await server(t, dir);
+  assert.equal((await book(valid, { cookie: A })).status, 303);
+  assert.equal((await post(origin, '/join', { ...slot14, login: 'ben42' }, B)).status, 303);
+  const before = readFileSync(join(dir, 'bookings.json'), 'utf8');
+  const refused = [
+    ['/join', { ...slot14, login: 'carol' }, C], // full
+    ['/join', { table: '2', time: '15:00', login: 'carol' }, C], // free slot
+    ['/leave', { ...slot14, login: 'ben42' }, C], // other browser
+    ['/leave', { ...slot14, login: 'nobody' }, B], // not in the game
+    ['/cancel', slot14, B], // not the booker
+    ['/cancel', { table: '2', time: '15:00' }, A], // free slot
+  ];
+  for (const [path, fields, cookie] of refused) {
+    const status = (await post(origin, path, fields, cookie)).status;
+    assert.ok(status >= 400 && status < 500, `${path} ${JSON.stringify(fields)} gave ${status}`);
+    assert.equal(readFileSync(join(dir, 'bookings.json'), 'utf8'), before, `${path} changed the file`);
+  }
+});
+
+test('a failed save of a join answers 500 and forgets the join', async t => {
+  const dir = tempDir(t);
+  const { origin, book } = await server(t, dir);
+  assert.equal((await book(valid, { cookie: A })).status, 303);
+  mkdirSync(join(dir, 'bookings.json.tmp'));
+  assert.equal((await post(origin, '/join', { ...slot14, login: 'ben42' }, B)).status, 500);
+  assert.doesNotMatch(await slotText(origin, B), /ben42/);
 });
