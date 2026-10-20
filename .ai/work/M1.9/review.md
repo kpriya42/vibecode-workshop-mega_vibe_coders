@@ -65,3 +65,42 @@ No hosted journey, actual deploy/redeploy, physical phone, Safari or Firefox. Re
 ## Verdict
 
 REQUEST CHANGES for fa68a4bebac72863cfd2fc8393b8b45befd30d8d. Security, validation, default one-tap journey, layout, no-JS operation and restart persistence passed, but nondefault settings reset after the first successful tap, defeating the agreed set-once flow. Re-review the corrected SHA before merge. Local checks only; no hosted approval.
+
+## Round 2
+
+Base SHA: 4baee8c6098850c3addd7e718a3665dd5b3ffa77
+Head SHA: 09a2a1d17c548086b483c610d01494c2fdef7ffd
+Reviewer session/provider: Codex CLI (codex exec, OpenAI model family), dispatched by the Claude milestone lead
+
+### What I checked
+
+Confirmed `git rev-parse HEAD` equals the full head above on `m1.9-one-tap`; initial worktree clean. Read IDEA.md, PLAN.md, .ai/rules.md, reviewer role/template, brief, round 1 review and validation including Round 2. Inspected `git diff fa68a4b HEAD`, including the complete server/test change and evidence additions. The only runtime change is cookie selection, valid-pair cookie emission after successful Book/Join, and settings fallback when rendering. Server action validation, browser ownership, persistence, markup/CSS and deployment contracts remain unchanged. `git diff --check` passed. This independent reviewer did not write the implementation.
+
+All Node commands used the requested PATH (exported in each command shell); `node --version` reported v22.23.3.
+
+- `TZ=UTC npm test`: 89 passed, 0 failed, 0 skipped; `/tmp/m19-r2-utc.log`.
+- `TZ=Europe/Berlin npm test`: 89 passed, 0 failed, 0 skipped; `/tmp/m19-r2-berlin.log`.
+- These runs include booking/join refusal and concurrency tests, browser ownership, persistence/restart and storage failure checks, timezone/DST and deployment contracts. The new HTTP cookie-jar regression verifies nondefault settings through a join and successive bookings.
+
+Independent additional HTTP script `/tmp/m19-r2-review/game.mjs`, log `game.log` in that directory, used the actual createApp, ephemeral loopback port, fixed clock and isolated in-memory bookings:
+
+- Created another browser's open game; booked 14:00 with 4/2, joined the open 13:00 game, read the bar (still 4/2), then booked 14:30. Both stored bookings are spots=4, players=2. Verified the emitted `game=4-2` cookie has HttpOnly, SameSite=Lax, Path=/ and Max-Age=31536000.
+- Forged values `4-9`, `2-3`, `0-0`, markup, 10,000 characters and `junk; Path=/; browser=bad` all gave HTTP 200 with Singles/1; supplied raw strings/markup were absent from HTML. Also checked `4-2; Path=/`: HTTP cookie syntax correctly treats the semicolon as a separator, so the valid game=4-2 component selects 4/2; the trailing syntax is not rendered. No decoding or raw cookie interpolation occurs. Every probe left health HTTP 200.
+- For every forged value, direct booking POST spots=4&players=9 returned 400, with serialized state unchanged. Cookie prefill cannot override the server's validation.
+- Eight Cancel/Leave probes using game alone, login alone, both together, or both plus an unrelated browser id returned 403 and preserved state. A real owner's Cancel with a different remembered login succeeded. The earlier regression script also checks legitimate Leave with a different remembered login.
+
+Reran round 1's reviewer-written `/tmp/m19-review/probe.mjs`; current output is `/tmp/m19-r2-review/security.log`: all 12 forged-login ownership probes refused; eight malicious login cookies safe; 39 prototype/junk query probes returned 200 with unchanged state and healthy app; 12 invalid-login direct Book/Join POSTs returned 400 without mutation; real owner Leave and Cancel succeeded despite mismatching login cookies. Persistence regression was rerun through both full suites, including restart and damaged-storage cases; no new browser restart was needed for this cookie-only fix.
+
+Adapted and inspected the coder's CDP settings driver into `/tmp/m19-r2-review/settings.mjs` with separate data, Chrome profiles and artifacts. Ran it at 390×844 both normally and with page JavaScript disabled; logs `browser.log` and `nojs.log`. Real mouse/text events selected Doubles and group 2, tapped Book 14:00 then Book 14:30. After each redirect the bar read 4/2 and both owned rows showed group of 2 with 2 of 4 spots left. Saved JSON confirmed both bookings stored 4/2 in both runs. Width was 390/390, minimum measured target 44px high and 56px wide, no undersized controls. Visually inspected `390x844-r2-A2-after-second.png`: Doubles and 2 remain selected, both owned rows clear, no horizontal overflow. Drivers stopped only their own exact child PIDs.
+
+### Skipped checks and limits
+
+No hosted/deploy/redeploy acceptance, physical phone, Safari or Firefox. Did not repeat the full two-profile desktop journey or browser restart from round 1: no markup/CSS, persistence or ownership implementation changed; the requested phone regression, HTTP security checks and automated persistence suites were rerun. All new data, profiles and scripts stayed under /tmp. Modified only this review file; session/context updates omitted under the explicit single-file restriction. No commit, push or merge.
+
+### Findings
+
+Round 1 P2 is resolved: successful Book and Join preserve the valid nondefault settings for subsequent taps, including without JavaScript. Invalid game cookies are constrained before rendering, and successful joins cannot emit an invalid game pair. No new findings.
+
+### Verdict
+
+APPROVE for 09a2a1d17c548086b483c610d01494c2fdef7ffd. Required settings persistence, validation and ownership regressions passed. Approval is for this exact head and local checks only.
