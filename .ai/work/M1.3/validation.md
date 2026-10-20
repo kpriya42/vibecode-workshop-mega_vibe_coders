@@ -65,3 +65,19 @@ Method: `npm start`-equivalent `PORT=3913 HOST=127.0.0.1 node server.mjs` (real 
 - The login rule is `[A-Za-z0-9-]{1,32}` after trimming surrounding whitespace. Logins are not checked against 42.
 - The `?booked=HH:MM` notice is shown for any well-formed time in the URL, even without a matching booking. It is cosmetic only and books nothing.
 - I did not run `ponytail-review` or any other review. The independent review is the reviewer's job.
+
+## Round 2 — fix for review finding P2
+
+- Review round 1 (Codex, REQUEST CHANGES on `9957f5b`) was committed unchanged as `aeebadc`.
+- New implementation head: `f166811d456a17ecbd1965b6876e7deee2cf6165`. Base is unchanged (`632909c`). Node `v22.23.3`.
+- Fix (`server.mjs`, `book()`): the submitted time must equal the canonical `HH:MM` built from its own minute count, in addition to the earlier checks (30-minute boundary, within opening hours). A time like `12:60` computes to 780 minutes, whose canonical form is `13:00`, so it is refused with 400 "12:60 is not a slot within opening hours." and nothing is stored.
+- New test: "times that are not a real slot start, like 12:60, are refused and book nothing". It covers `12:60`, `12:90`, `13:60`, `08:60`, `17:90`, `99:00`, `1:00`, `14:00:00` and ` 14:00` (each must get 400 with a time message), checks that no booking is stored, and then checks that `13:00` can still be booked.
+- P3 notes (duplicate fields, content type) are left out of this step as instructed.
+
+| Command | Result |
+|---|---|
+| `node --test test/book.test.mjs` with the new test, before the fix (RED) | 14 pass / 1 fail (`12:60`: expected 400, actual 303) |
+| `TZ=UTC npm test` after the fix | 46 tests, 46 pass, 0 fail, 0 skipped |
+| `TZ=Europe/Berlin npm test` after the fix | 46 tests, 46 pass, 0 fail, 0 skipped |
+
+Not re-run in round 2: the browser journey. The change only adds a server-side check on input the form never sends, because the select offers only canonical slot times.
