@@ -90,3 +90,40 @@ No access-boundary bypass found in the exercised cases. The normal join/leave/ca
 ## Verdict
 
 REQUEST CHANGES for head 34a074cc5c4f722c4ae41384ce5ff1749658097e. Ownership and normal acceptance checks passed, but a single unauthenticated GET crashes the app. Re-review the corrected SHA before merge. This review covers local checks only.
+
+## Round 2
+
+Base SHA: 279eb160bc10e3c56f27142da66ff0acf1aac3b1
+Head SHA: 0e2e3b34e35a17c82edb59bf1008fcaa63769a76
+Reviewer session/provider: Codex CLI (codex exec, OpenAI model family), dispatched by the Claude milestone lead
+
+### What I checked
+
+`git rev-parse HEAD` confirmed the exact head above; the initial working tree was clean. Read the reviewer role, review template, IDEA.md, PLAN.md, .ai/rules.md, step brief, original review and validation including Round 2. Inspected `git diff 34a074c HEAD` (fix, regression test and review/validation evidence) and re-scanned the complete `git diff 279eb160bc10e3c56f27142da66ff0acf1aac3b1 HEAD`, including server actions/rendering, CSS and tests. This session did not write implementation code.
+
+All node/npm commands used the Node 22 PATH prefix recorded in round 1. Independent commands and actual results:
+
+- `TZ=UTC npm test`: 63 passed, 0 failed, 0 skipped. Log: `/tmp/m14-r2-utc.log`.
+- `TZ=Europe/Berlin npm test`: 63 passed, 0 failed, 0 skipped. Log: `/tmp/m14-r2-berlin.log`.
+- `node /tmp/m14-r2-check.mjs`: passed against the actual `createApp`, listening on an ephemeral loopback port, fixed clock `2026-10-20T10:00:00Z`. The scratch driver used real HTTP requests and manual redirects, created a booking via POST, retained the server-issued owner cookie, and inspected both HTTP output and the in-memory booking array. Log: `/tmp/m14-r2-http.log`.
+
+Direct HTTP checks:
+
+- GET `/table/2` with each query key `toString`, `constructor`, `__proto__`, `hasOwnProperty`, `valueOf`, `unknown`, and each valid notice `joined`, `booked`, `cancelled`, `left`, all with value `14:00`: every response 200. Valid notices rendered the success status. Also tested `%E0%A4%A=14:00`, `joined=%E0%A4%A`, a bare `%`, `joined=%00`, and `toString=14:00&joined=14:00`. After **each** request, the server was still listening, `/api/health` returned 200, the table still rendered jwosylu, and the entire seeded booking JSON was unchanged.
+- Seven malformed/unusual cookie strings, including invalid percent encodings, prototype names, a quoted value and duplicate browser fields: GET 200; after each, health 200 and booking JSON unchanged.
+- Sixteen raw POST probes across `/book`, `/join`, `/cancel`, `/leave`, using malformed percent encodings in table/time/login and malformed/prototype-name field keys. Responses were 400 except cancel with malformed unused login (403) and leave with unknown malformed login (404). After each, health 200, seed still rendered and booking JSON unchanged.
+- Normal booking and join obtained actual distinct cookies and returned 303; the join occupied the final spot. Cancel from the joiner's browser or without a cookie returned 403. Leave from the booker's browser or without a cookie returned 403. Every refused operation preserved the joined booking JSON. Correct joiner leave returned 303 and reopened one of two spots; correct owner cancel returned 303 and removed the booking. Final health was 200.
+
+Crash-path scan: notice/action/asset lookups use Maps; no remaining object lookup by a request-controlled key was found. Cookie matching does not percent-decode or throw on malformed values. URL construction has its own catch; query/body URLSearchParams tolerate malformed encodings. Body reads are bounded and disconnects caught. Validated actions throw Refusal inside their handler catch, and stored booking/joiner types originate from validated strings/numbers. Unexpected non-Refusal exceptions are still rethrown and table rendering remains outside a general catch, but no request-controlled route to such an exception was found in this scan or the probes. The Map fix specifically prevents inherited names from selecting non-string notice values; the new regression test covers that cause.
+
+### Skipped checks and limits
+
+No new browser run: round 1 already independently exercised both viewport sizes and two browser profiles; the round-2 runtime diff changes only notice lookup, with no markup/CSS/control changes. HTTP checks rechecked valid notices and the normal flow. No hosted acceptance, physical phone, deployment, restart/redeploy persistence (M1.5), doctor, deploy:preview or smoke. This approval covers local behavior only. The scratch server closed in the driver's finally block; no external processes were killed. Scratch files stayed under /tmp. Only review.md was changed; session/context handoffs were omitted to follow the explicit single-file instruction. No commit, push or merge performed.
+
+### Findings
+
+Round-1 P1 is resolved. The formerly crashing GET and all requested inherited-name probes leave the app alive and bookings intact. No additional blocking finding or request-controlled crash found. The existing round-1 non-blocking limitations remain unchanged.
+
+### Verdict
+
+APPROVE for exact head 0e2e3b34e35a17c82edb59bf1008fcaa63769a76. Both 63-test time-zone runs, independent crash probes, ownership boundaries and normal join/leave/cancel regression passed.
