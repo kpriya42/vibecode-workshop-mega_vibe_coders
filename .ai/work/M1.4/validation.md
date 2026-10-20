@@ -75,3 +75,24 @@ Observed state of the 14:00 slot on `/table/2`. The same at both widths except t
 - The booking browser also sees the Join form on its own open game. It can add a friend's login, but its own login is refused.
 - Not done (out of scope or not asked for): duplicate form fields still use the first value (M1.3 round-1 P3 note, non-blocking); CSRF tokens; persistence (M1.5); live updates. Cancel and leave are refused once a slot has ended, through the shared ended check.
 - I did not run `npm run doctor`, `deploy:preview` or `smoke`.
+
+## Round 2 — fix for review round 1 (P1)
+
+- Reviewed head: `34a074cc5c4f722c4ae41384ce5ff1749658097e`, verdict REQUEST CHANGES. The review was committed unchanged as `bf49dc0`.
+- Fix commit (new implementation head): `1e47df7187ba10700c8261cf281d299cecf8d9bb`
+- Coder: the same Claude subagent, continued by the milestone lead with the review findings. Node `v22.23.3`.
+
+**P1 (GET `/table/2?toString=14:00` crashed Node).** Root cause: the notice texts lived in a plain object, `done`. So `done[k]` was truthy for inherited names such as `toString`, and `.replace` was then called on a function. Fix: `done` is now a `Map`, read with `done.has(k)` and `done.get(key)`, like the existing `actions` and `assets` maps. Only `booked`, `joined`, `cancelled` and `left` can reach rendering.
+
+**Other lookups by user input.** I grepped `server.mjs` for `obj[userValue]` (`grep -nE "\w\[[a-zA-Z_]+\]"`) and found none. The remaining lookups by request data are `actions.get(req.url)` and `assets.get(path)` (both Maps), and `table[1]` and `asset[0]` (fixed indices).
+
+**Test, written first.** The new test in `test/join.test.mjs` is `query keys that are not notices, like toString or __proto__, leave the app serving and bookings unchanged`. It seeds a booking and sends GET `/table/2?<key>=14:00` for each of `toString`, `constructor`, `__proto__`, `hasOwnProperty`, `valueOf` and `nope`. For each one it checks that the table page renders without a status notice. Afterwards it checks that `/api/health` returns 200, that the table page still shows `jwosylu`, and that the bookings JSON is unchanged.
+- RED before the fix: `node --test test/join.test.mjs` gave 17 tests, 16 pass and 1 fail. The failure was `TypeError` at `server.mjs:238`, the `.replace` call.
+- GREEN after the fix:
+
+| Command | Result |
+|---|---|
+| `TZ=UTC npm test` | 63 tests, 63 pass, 0 fail, 0 skipped |
+| `TZ=Europe/Berlin npm test` | 63 tests, 63 pass, 0 fail, 0 skipped |
+
+**Not re-run in round 2:** the browser journey. The change touches only how success notices are looked up. The normal `?booked|joined|left|cancelled=` notices are still covered by the HTTP tests (`joining an open game…`, `…can cancel…`, `…can leave…` and the M1.3 booking test).
