@@ -4,7 +4,6 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 
 const assets = new Map([
-  ['/', ['index.html', 'text/html; charset=utf-8']],
   ['/style.css', ['style.css', 'text/css; charset=utf-8']],
 ]);
 
@@ -38,7 +37,6 @@ function tablePage(table, { now, bookings, opens, closes }, message = '', browse
   const date = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Berlin', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(now);
   // shortcut: compares Berlin wall-clock minutes, wrong only if opening hours span the 02:00–03:00 DST jump.
   const items = [];
-  const free = [];
   for (let start = opens * 60; start < closes * 60; start += 30) {
     const time = `${pad(Math.floor(start / 60))}:${pad(start % 60)}`;
     const booking = bookings.find(b => b.table === table && b.start === `${today}T${time}`);
@@ -47,37 +45,33 @@ function tablePage(table, { now, bookings, opens, closes }, message = '', browse
       : !booking ? ['free', 'Free']
       : booking.players + joined.length >= booking.spots ? ['full', 'Full']
       : ['open', `${escape(booking.spots - booking.players - joined.length)} of ${escape(booking.spots)} spots left`];
-    if (status === 'free') free.push(`<option value="${time}">${time}</option>`);
+    const login = `<label>Your 42 login <input name="login" required maxlength="32" pattern="[A-Za-z0-9\-]+" autocomplete="username" autocapitalize="none" spellcheck="false"></label>`;
+    // name="slot" makes the panels an exclusive accordion: opening one closes the others, no JS needed.
+    const panel = (verb, action, fields) => `<details name="slot"><summary>${verb}</summary><form method="post" action="${action}" class="book">${hidden(table, time)}<h2>${time} · Table ${table}</h2>${login}${fields}<button type="submit">${verb} ${time}</button></form></details>`;
     let by = '';
     let controls = '';
+    if (status === 'free') {
+      controls = panel('Book', '/book', `<fieldset><legend>Game</legend><label><input type="radio" name="spots" value="2" checked> Singles</label><label><input type="radio" name="spots" value="4"> Doubles</label></fieldset><label>Your group fills <input name="players" type="number" min="1" max="4" value="1" required inputmode="numeric"></label>`);
+    }
     if (booking && status !== 'ended') {
       by = ` · ${profile(booking.login ?? '')}${booking.players > 1 ? ` (group of ${escape(booking.players)})` : ''}${joined.map(p => `, ${profile(p.login)}`).join('')}`;
+      if (status === 'open') controls += panel('Join', '/join', '');
       if (booking.browser === browser) controls += `<form method="post" action="/cancel">${hidden(table, time)}<button type="submit">Cancel booking</button></form>`;
       for (const p of joined.filter(p => p.browser === browser)) {
         controls += `<form method="post" action="/leave">${hidden(table, time)}<input type="hidden" name="login" value="${escape(p.login)}"><button type="submit">Leave as ${escape(p.login)}</button></form>`;
       }
-      if (status === 'open') controls += `<form method="post" action="/join">${hidden(table, time)}<input name="login" required maxlength="32" pattern="[A-Za-z0-9\-]+" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Your 42 login" aria-label="Your 42 login to join ${time}"><button type="submit">Join</button></form>`;
     }
     items.push(`<li class="slot ${status}"><time>${time}</time><span>${label}${by}</span>${controls && `<div class="controls">${controls}</div>`}</li>`);
   }
   const closed = closes * 60 <= minutesNow ? '<p class="notice">Closed for today — every slot has ended. Come back tomorrow.</p>' : '';
-  const form = free.length ? `
-  <form method="post" action="/book" class="book">
-    <h2>Book a slot</h2>
-    <input type="hidden" name="table" value="${table}">
-    <label>Time <select name="time" required>${free.join('')}</select></label>
-    <label>Your 42 login <input name="login" required maxlength="32" pattern="[A-Za-z0-9\-]+" autocomplete="username" autocapitalize="none" spellcheck="false"></label>
-    <label>Game <select name="spots"><option value="2">Singles (2 spots)</option><option value="4">Doubles (4 spots)</option></select></label>
-    <label>Your group fills <input name="players" type="number" min="1" max="4" value="1" required inputmode="numeric"></label>
-    <button type="submit">Book</button>
-  </form>` : '';
-  const other = table === 1 ? 2 : 1;
-  return layout(`Table ${table} · Today's slots`, `
-  <nav><a href="/table/${other}">Switch to table ${other} →</a></nav>
+  const tab = n => `<a href="/table/${n}"${n === table ? ' aria-current="page"' : ''}>Table ${n}</a>`;
+  return layout(`Table ${table} · Ping Pong 42`, `
+  <header><a class="wordmark" href="/">PING PONG 42</a><nav class="switch" aria-label="Table">${tab(1)}${tab(2)}</nav></header>
   <h1>Table ${table}</h1>
   <p class="intro">${date} · German time</p>
   ${message}${closed}
-  <ol class="slots">${items.join('')}</ol>${form}`);
+  <ol class="slots">${items.join('')}</ol>
+  <p class="how">Scan the QR code on a table, book a free slot with your 42 login or join an open game, then meet at the table.</p>`);
 }
 
 class Refusal extends Error {
@@ -236,7 +230,7 @@ export function createApp({
       res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
       return res.end(req.method === 'HEAD' ? undefined : JSON.stringify({ ok: true, revision }));
     }
-    const table = path.match(/^\/table\/([12])$/);
+    const table = path === '/' ? [path, '1'] : path.match(/^\/table\/([12])$/);
     if (table) {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       const [key, time] = [...url.searchParams].find(([k, v]) => done.has(k) && /^\d\d:\d\d$/.test(v)) ?? [];
