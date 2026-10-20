@@ -106,3 +106,42 @@ test('a refused cancel keeps the remembered login in the field', async t => {
   assert.match(html, /Not cancelled/);
   assert.equal(loginValue(html), 'jwosylu');
 });
+
+// A browser that keeps cookies, as a phone would between taps.
+function jar(post, page) {
+  const cookies = new Map([['browser', id(A)]]);
+  const header = () => [...cookies].map(([k, v]) => `${k}=${v}`).join('; ');
+  const keep = response => { for (const c of response.headers.getSetCookie()) { const [k, v] = c.split(';')[0].split('='); cookies.set(k, v); } return response; };
+  return { tap: async (path, fields) => keep(await post(path, fields, header())), page: () => page(header()) };
+}
+const id = cookie => cookie.split('=')[1];
+const chosen = html => [html.match(/name="spots" value="(\d)" checked/)[1], html.match(/<input name="players"[^>]*value="([^"]*)"/)[1]];
+
+test('Doubles and a group of 2 stay set across consecutive taps and a join in between', async t => {
+  const { bookings, post, page } = await server(t, [{ table: 2, start: '2026-10-20T13:00', spots: 4, players: 1, login: 'ben42', browser: 'x', joined: [] }]);
+  const me = jar(post, page);
+  assert.deepEqual(chosen(await me.page()), ['2', '1']);
+  assert.equal((await me.tap('/book', { ...book, spots: '4', players: '2' })).status, 303);
+  assert.deepEqual(chosen(await me.page()), ['4', '2']);
+  assert.equal((await me.tap('/join', { table: '2', time: '13:00', login: 'jwosylu', spots: '4', players: '2' })).status, 303);
+  const html = await me.page();
+  assert.deepEqual(chosen(html), ['4', '2']);
+  // The next tap posts whatever the bar shows.
+  const [spots, players] = chosen(html);
+  assert.equal((await me.tap('/book', { ...book, time: '14:30', spots, players })).status, 303);
+  assert.deepEqual(bookings.filter(b => b.login === 'jwosylu').map(b => [b.start, b.spots, b.players]),
+    [['2026-10-20T14:00', 4, 2], ['2026-10-20T14:30', 4, 2]]);
+});
+
+test('junk game settings fall back to Singles and 1 and are never rendered', async t => {
+  const { post, page } = await server(t, [{ table: 2, start: '2026-10-20T13:00', spots: 4, players: 1, login: 'ben42', browser: 'x', joined: [] }]);
+  for (const junk of ['3-1', '2-3', '4-5', '4-0', '"><b>x', '4-2x', '']) {
+    const html = await page(`game=${junk}`);
+    assert.deepEqual(chosen(html), ['2', '1'], junk);
+    assert.doesNotMatch(html, /<b>x/, junk);
+  }
+  // A join carrying junk settings still joins but does not remember them.
+  const response = await post('/join', { table: '2', time: '13:00', login: 'jwosylu', spots: '"><b>x', players: '9' }, A);
+  assert.equal(response.status, 303);
+  assert.equal(response.headers.getSetCookie().find(c => c.startsWith('game=')), undefined);
+});

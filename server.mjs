@@ -209,6 +209,7 @@ export function createApp({
     const id = req.headers.cookie?.match(/(?:^|;\s*)browser=([0-9a-f-]{36})(?:;|$)/)?.[1];
     // Only a valid login is prefilled; anything else in the cookie is ignored.
     const remembered = req.headers.cookie?.match(/(?:^|;\s*)login=([A-Za-z0-9-]{1,32})(?:;|$)/)?.[1] ?? '';
+    const [spots, players] = req.headers.cookie?.match(/(?:^|;\s*)game=(2-[12]|4-[1-4])(?:;|$)/)?.[1].split('-') ?? [];
     const action = req.method === 'POST' && actions.get(req.url);
     if (action) {
       const [run, past, refused] = action;
@@ -232,6 +233,9 @@ export function createApp({
         // Remembers the login for prefill only; ownership stays with the browser cookie. loginOf allowed only [A-Za-z0-9-].
         const login = form.get('login')?.trim();
         if (run === book || run === join) res.appendHeader('set-cookie', `login=${login}; HttpOnly; SameSite=Lax; Path=/; Max-Age=31536000`);
+        // Keeps the bar's game and group for the next tap; a join does not validate them, so only a valid pair is kept.
+        const game = `${form.get('spots')}-${form.get('players')}`;
+        if ((run === book || run === join) && /^(2-[12]|4-[1-4])$/.test(game)) res.appendHeader('set-cookie', `game=${game}; HttpOnly; SameSite=Lax; Path=/; Max-Age=31536000`);
         res.writeHead(303, { location: `/table/${table}?${past}=${time}` });
         return res.end();
       } catch (error) {
@@ -241,7 +245,7 @@ export function createApp({
         res.writeHead(error.status, { 'content-type': 'text/html; charset=utf-8' });
         return res.end(table === '1' || table === '2'
           ? tablePage(Number(table), { now: now(), bookings, opens, closes }, notice, browser,
-            { login: form.get('login') ?? remembered, spots: form.get('spots'), players: form.get('players') ?? '1' })
+            { login: form.get('login') ?? remembered, spots: form.get('spots') ?? spots, players: form.get('players') ?? players })
           : layout(refused, `<h1>${refused}</h1>${notice}<p><a href="/table/1">Go to table 1</a> · <a href="/table/2">table 2</a></p>`));
       }
     }
@@ -263,7 +267,7 @@ export function createApp({
       const [key, time] = [...url.searchParams].find(([k, v]) => done.has(k) && /^\d\d:\d\d$/.test(v)) ?? [];
       return res.end(req.method === 'HEAD' ? undefined : tablePage(Number(table[1]), { now: now(), bookings, opens, closes },
         key ? `<p class="notice success" role="status">${done.get(key).replace('$', time)}</p>` : '', id,
-        { login: remembered }));
+        { login: remembered, spots, players }));
     }
     const asset = assets.get(path);
     if (!asset) {
