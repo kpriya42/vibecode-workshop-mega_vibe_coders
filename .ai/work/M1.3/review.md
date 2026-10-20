@@ -81,3 +81,43 @@ Skipped: hosted deployment/acceptance (M1.1 blocked), physical phone use, restar
 ## Verdict
 
 REQUEST CHANGES. Normal bookings, concurrency, body bounds, identity storage, regression suites and both browser layouts passed, but malformed times currently book successfully and disappear from the displayed schedule. Re-review is required on the corrected head SHA. This verdict covers only the head named above and local checks.
+
+## Round 2
+
+Base SHA: 632909c7ad8e77a487babbc8e7286e71592c165f
+Head SHA: 22726525f22cf48f14c44e3f3624299b580c1a61
+Reviewer session/provider: Codex CLI (codex exec, OpenAI model family), dispatched by the Claude milestone lead
+
+### What I checked
+
+`git rev-parse HEAD` confirmed the full head above; initial `git status --short` was empty. Read IDEA.md, PLAN.md, .ai/rules.md, the reviewer role/template, brief, round-1 review and coder validation including Round 2. Inspected `git diff 9957f5b HEAD`: only the round-1 review, validation update, server time check and regression test changed. Rechecked the full step range `git diff 632909c7ad8e77a487babbc8e7286e71592c165f HEAD`, including booking validation/storage, request handling, rendering, CSS and tests. The added canonical-time comparison prevents minute overflow aliases before any booking is stored; existing valid slots retain the same path. No new blocking issue found. Deployment scripts, package.json, lockfile and deployment tests have no changes from base.
+
+All node/npm commands used:
+
+```sh
+export PATH=/tmp/claude-104216/-home-jawosylu-dev-personal-vibecode-workshop-mega-vibe-coders/99a9365b-6314-49c9-af41-571fb039a30b/scratchpad/node-v22.23.3-linux-x64/bin:$PATH
+node --version
+TZ=UTC npm test
+TZ=Europe/Berlin npm test
+node /tmp/m13-r2-http.mjs
+```
+
+Actual results: Node v22.23.3; both timezone runs passed 46 tests, 0 failures, 0 skipped (logs: `/tmp/m13-r2-utc.log`, `/tmp/m13-r2-berlin.log`). Existing app/table/deploy and booking tests all passed, including identity, reload, validation, concurrent booking and disconnect recovery.
+
+The scratch HTTP script imported the reviewed createApp, started the real app on spare port 38291 at 127.0.0.1, with an inspectable in-memory bookings array and fixed clock `2026-10-20T10:00:00Z` (12:00 Berlin). It sent direct fetch POSTs to `/book` using URLSearchParams, bypassing browser constraints. Default fields were table=1, login=jwosylu, spots=2, players=1.
+
+- Each time `12:60`, `12:90`, `24:00`, `1:00`, `14:00:00`, ` 14:00`, `14:00 `, `14:00\n`, `14:00\u0000`, `13:60`, `08:60`, `17:90`, `99:00`, `00:00`, `23:30`, `14:15`, empty string, `１４:００`, `14:0`, and `-1:00` returned 400 with a “Not booked” message. The script asserted unchanged storage after every refusal; bookings remained empty throughout.
+- Valid `13:00` returned 303 and stored exactly one booking; following the redirect showed the slot open with “1 of 2 spots left · jwosylu”. Repeating it returned 409 and left the single booking unchanged.
+- Twenty simultaneous requests for 16:00 returned exactly one 303 and nineteen 409; exactly one matching booking was stored.
+- A body containing a one-million-character login returned 413 and stored nothing. POST `/` returned 405 with `Allow: GET, HEAD`.
+- Afterwards health returned 200 with `{ "ok": true, "revision": "round2-review" }`, and valid 17:30 still booked with 303. All assertions passed; the script stopped the app in its finally block.
+
+Skipped: a new browser run, because the round-2 change affects only server validation of values the canonical time select never generates; rendering/CSS are unchanged since round 1's desktop and phone review. Hosted acceptance/deployment remains unverified (M1.1 blocked). Physical phones, persistence/redeploy (M1.5), joining/cancellation (M1.4), and CSRF remain outside this review. Round-1 P3 duplicate-field and content-type behavior was inspected as unchanged, not re-tested; both notes remain non-blocking. Scratch files stayed under /tmp. Session/context updates are omitted under the explicit instruction to modify only this review file. No implementation changes, commit, push or merge were performed.
+
+### Findings
+
+Round-1 P2 is resolved: malformed times are refused with 400 and create no hidden or aliased bookings. No new findings. Round-1 P3 notes remain non-blocking.
+
+### Verdict
+
+APPROVE for exact head `22726525f22cf48f14c44e3f3624299b580c1a61`. The blocking malformed-time defect is fixed, both timezone suites pass, and direct HTTP checks confirm refusals leave storage unchanged while valid bookings and regression cases still work. Approval covers local checks only.
