@@ -1,46 +1,80 @@
 # Project plan
 
-Draft only. Agree the goal with your team before implementation. Replace the example steps with outcomes that fit your idea. Keep assigned IDs permanent.
+Agreed with the team on 2026-10-20. See IDEA.md for the problem and constraints. Keep assigned IDs permanent; add new steps rather than renumber.
 
 ## Goal
 
-A named user can complete one useful journey at our team's live URL. See IDEA.md for the problem and constraints.
+At our team's live URL, a 42 Heilbronn student scans a table's QR code, books or joins a table tennis slot for today, and the other player can find them by intra login.
 
 ## Working model
 
 Project lead → one milestone lead → one step at a time through coder → independent reviewer → committer. Each milestone has one lead session. Each step names a human owner and the real agent sessions used. The lead records blockers here; it does not invent an approval.
 
-## M1 — First useful live journey
+## M1 — Book or join a table tennis slot
 
-Milestone lead: assign a fresh session. Human owner: fill in. Release: only after the team accepts the journey.
+Milestone lead: not yet started (a fresh session must take it). Human owner: jasuoh. Release: only after the team accepts the journey.
 
 | Step | Outcome | Depends on | Human owner | State / PR |
 |---|---|---|---|---|
-| M1.1 | Our fork runs at the assigned URL and reports its deployed revision | Team access | assign | draft |
-| M1.2 | The user can complete the core action | M1.1 | assign | draft |
-| M1.3 | The result survives the persistence boundary our idea requires | M1.2 | assign | draft |
-| M1.4 | A teammate can complete the whole journey; observed failures are corrected | M1.3 | assign | draft |
+| M1.1 | Our fork runs at the assigned URL and reports its deployed revision | Organiser handout | jasuoh | blocked: no handout yet |
+| M1.2 | Each table's page shows today's slots as free, open or full | M1.1 for hosted checks; can be coded locally | jasuoh | draft |
+| M1.3 | A player books a slot with their intra login | M1.2 | jasuoh | draft |
+| M1.4 | Others join open games and see who is playing; only the right device can cancel or leave | M1.3 | jasuoh | draft |
+| M1.5 | Bookings survive reload, other devices, restart and redeploy | M1.3 | jasuoh | draft |
+| M1.6 | Real players use the two QR stickers; observed failures are corrected | M1.1–M1.5 | jasuoh | draft |
 
 ### M1.1 — The live starting point
 
-- [ ] Every teammate has access to the same team fork.
-- [ ] The assigned SSH connection reaches our team environment.
+Already done: the team fork exists (`kpriya42/vibecode-workshop-mega_vibe_coders`) and `npm start` works locally.
+
+Blocked: we have no organiser handout (team number, SSH command, key, known hosts, URL). Ask the organiser for it; see docs/connect.md.
+
+- [ ] Every teammate has collaborator access to the same team fork.
+- [ ] The assigned SSH connection reaches our team environment as `vc-team`.
 - [ ] Our page is reachable at the assigned HTTPS URL.
-- [ ] `/api/health` reports the revision we intended to deploy.
+- [ ] `/api/health` reports the revision we intended to deploy (`npm run smoke` from a laptop).
 - [ ] Another teammate opens the page on a phone.
 
-### M1.2 — Core action
+### M1.2 — Today's slots per table
 
-Write acceptance cases for the assigned idea: normal input, empty state and one failure. State the expected result rather than the implementation.
+- `/table/1` and `/table/2` each show today's 30-minute slots within opening hours (default 09:00–18:00).
+- Each slot is shown as free, open (with how many spots are left) or full.
+- Slots that have already ended can't be booked.
+- "Today" and slot times follow Europe/Berlin, including summer and winter time. A server on UTC still shows German times.
+- You can switch to the other table from either page.
+- An unknown table such as `/table/3` gives a clear not-found page, not a crash.
+- The page is usable at phone width.
 
-### M1.3 — Persistence
+### M1.3 — Book a slot
 
-Specify what must survive: reload, another visitor, process restart, or all three. Choose deliberately; browser storage is not shared server storage.
+- A player enters their intra login, picks singles (2 spots) or doubles (4 spots) and says how many spots their group already fills. The rest stay open.
+- A free slot becomes open or full as a result.
+- An empty login or one with spaces is refused with a clear message; nothing is booked.
+- A slot that is already booked can't be booked again. Two simultaneous attempts on the same slot leave exactly one booking.
+- A past slot or a slot outside opening hours is refused by the server, not only hidden in the page.
 
-### M1.4 — Feedback
+### M1.4 — Join, leave and find each other
 
-Record one observed user problem, the resulting acceptance criterion and the result after correction. Add new scope as a new step instead of hiding it inside a fix.
+- Open games show how many spots are left; a player joins with their intra login.
+- A full game refuses an extra player. The same login can't join the same game twice.
+- Every player in a slot is shown as their login, linking to `https://profile.intra.42.fr/users/<login>`.
+- The booker sees who joined the next time they open the page (no live updates or alerts in M1).
+- Only the browser that made a booking can cancel it, and only the browser that joined can leave. A request from another browser is refused, including one typing the same login.
+- When a joiner leaves, the spot becomes open again.
+
+### M1.5 — Persistence
+
+- Bookings survive a page reload, viewing from another device, an app restart and a redeploy.
+- Data is stored outside the release directory, under `~/.local/share/vibecode-workshop/data/` on the guest. A path can be configured for local runs and tests.
+- Missing or empty storage starts as "no bookings", without a crash. A damaged data file is reported, not silently replaced.
+- No secrets or private connection details go in the data or the repo.
+
+### M1.6 — Real use and feedback
+
+- Print two QR stickers (any free generator) pointing to `/table/1` and `/table/2` on the live URL.
+- At least two real players, on their own phones, complete the IDEA.md proof journey.
+- Record one observed problem, the resulting acceptance criterion and the result after correction. New scope becomes a new step.
 
 ## M2 — Improve the demonstrated journey
 
-Plan only after M1 gives you evidence. Add the next useful milestone or stop and prepare the demo.
+Plan only after M1 gives evidence. Candidates the team already named: admin page (tables and hours without a deploy), "Sign in with 42", the page updating by itself or notifications, fairness limits, booking ahead, a QR code shown in the app.
