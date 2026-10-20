@@ -10,8 +10,8 @@
 
 ## Handoff
 
-State: IDEA.md, PLAN.md and .ai/context.md are written. They aren't committed yet; that needs the team's go-ahead and a branch with a PR.
+State: IDEA.md, PLAN.md and .ai/context.md merged in PR #1. The team agent setup (Claude builds, Codex reviews) is recorded in AGENTS.md.
 Next step: start a fresh milestone-lead session for M1. Get the organiser handout to unblock M1.1.
 Half-done work: none.
-Branch / reviewed SHA / PR: main at c3e2c39, planning docs uncommitted, no PR.
+Branch / reviewed SHA / PR: plan merged as 5fea7a4 (PR #1); agent setup on m0-agent-setup.
 Checks and limitations: documentation only. No code changed and no tests run.
