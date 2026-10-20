@@ -22,7 +22,7 @@ const layout = (title, body) => `<!DOCTYPE html>
 <body><main class="table">${body}</main></body>
 </html>`;
 
-// Booking: { table: 1|2, start: 'YYYY-MM-DDTHH:MM' (Berlin wall-clock slot start), spots: 2|4, players: filled count, login: booker's 42 login, browser: booker's server-issued browser id }.
+// Booking: { table: 1|2, start: 'YYYY-MM-DDTHH:MM' (Berlin wall-clock slot start), spots: 2|4, players: booker's group size, login: booker's 42 login, browser: booker's server-issued browser id, joined: [{ login, browser }] one spot each }.
 function berlin(now) {
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
@@ -30,7 +30,10 @@ function berlin(now) {
   return { today: `${parts.year}-${parts.month}-${parts.day}`, minutesNow: Number(parts.hour) * 60 + Number(parts.minute) };
 }
 
-function tablePage(table, { now, bookings, opens, closes }, message = '') {
+const profile = login => `<a href="https://profile.intra.42.fr/users/${escape(login)}">${escape(login)}</a>`;
+const hidden = (table, time) => `<input type="hidden" name="table" value="${table}"><input type="hidden" name="time" value="${time}">`;
+
+function tablePage(table, { now, bookings, opens, closes }, message = '', browser) {
   const { today, minutesNow } = berlin(now);
   const date = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Berlin', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(now);
   // shortcut: compares Berlin wall-clock minutes, wrong only if opening hours span the 02:00–03:00 DST jump.
@@ -39,13 +42,23 @@ function tablePage(table, { now, bookings, opens, closes }, message = '') {
   for (let start = opens * 60; start < closes * 60; start += 30) {
     const time = `${pad(Math.floor(start / 60))}:${pad(start % 60)}`;
     const booking = bookings.find(b => b.table === table && b.start === `${today}T${time}`);
+    const joined = booking?.joined ?? [];
     const [status, label] = start + 30 <= minutesNow ? ['ended', 'Ended']
       : !booking ? ['free', 'Free']
-      : booking.players >= booking.spots ? ['full', 'Full']
-      : ['open', `${escape(booking.spots - booking.players)} of ${escape(booking.spots)} spots left`];
+      : booking.players + joined.length >= booking.spots ? ['full', 'Full']
+      : ['open', `${escape(booking.spots - booking.players - joined.length)} of ${escape(booking.spots)} spots left`];
     if (status === 'free') free.push(`<option value="${time}">${time}</option>`);
-    const by = booking && status !== 'ended' ? ` · ${escape(booking.login ?? '')}` : '';
-    items.push(`<li class="slot ${status}"><time>${time}</time><span>${label}${by}</span></li>`);
+    let by = '';
+    let controls = '';
+    if (booking && status !== 'ended') {
+      by = ` · ${profile(booking.login ?? '')}${booking.players > 1 ? ` (group of ${escape(booking.players)})` : ''}${joined.map(p => `, ${profile(p.login)}`).join('')}`;
+      if (booking.browser === browser) controls += `<form method="post" action="/cancel">${hidden(table, time)}<button type="submit">Cancel booking</button></form>`;
+      for (const p of joined.filter(p => p.browser === browser)) {
+        controls += `<form method="post" action="/leave">${hidden(table, time)}<input type="hidden" name="login" value="${escape(p.login)}"><button type="submit">Leave as ${escape(p.login)}</button></form>`;
+      }
+      if (status === 'open') controls += `<form method="post" action="/join">${hidden(table, time)}<input name="login" required maxlength="32" pattern="[A-Za-z0-9\-]+" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Your 42 login" aria-label="Your 42 login to join ${time}"><button type="submit">Join</button></form>`;
+    }
+    items.push(`<li class="slot ${status}"><time>${time}</time><span>${label}${by}</span>${controls && `<div class="controls">${controls}</div>`}</li>`);
   }
   const closed = closes * 60 <= minutesNow ? '<p class="notice">Closed for today — every slot has ended. Come back tomorrow.</p>' : '';
   const form = free.length ? `
@@ -71,36 +84,93 @@ class Refusal extends Error {
   constructor(status, message) { super(message); this.status = status; }
 }
 
-// Validates a booking form and returns the booking, or throws a Refusal. Synchronous so check-and-store cannot interleave.
-function book(form, { now, bookings, opens, closes }, browser) {
-  const field = name => {
-    const value = form.get(name);
-    if (value === null) throw new Refusal(400, `The ${name} field is missing.`);
-    return value;
-  };
-  const table = field('table');
+const field = (form, name) => {
+  const value = form.get(name);
+  if (value === null) throw new Refusal(400, `The ${name} field is missing.`);
+  return value;
+};
+
+// Returns the form's table and today's not-ended slot, or throws a Refusal.
+function slotOf(form, { now, opens, closes }) {
+  const table = field(form, 'table');
   if (table !== '1' && table !== '2') throw new Refusal(400, 'Table must be 1 or 2.');
-  const time = field('time');
+  const time = field(form, 'time');
   if (!/^\d\d:\d\d$/.test(time)) throw new Refusal(400, 'Time must look like 14:00.');
-  const login = field('login').trim();
-  if (!/^[A-Za-z0-9-]{1,32}$/.test(login)) throw new Refusal(400, 'Enter your 42 login: letters, digits and hyphens only, no spaces.');
-  const spots = field('spots');
-  if (spots !== '2' && spots !== '4') throw new Refusal(400, 'Choose singles (2 spots) or doubles (4 spots).');
-  const players = field('players');
-  if (!/^\d+$/.test(players) || Number(players) < 1 || Number(players) > Number(spots)) {
-    throw new Refusal(400, `Your group must fill between 1 and ${spots} spots.`);
-  }
   const minutes = Number(time.slice(0, 2)) * 60 + Number(time.slice(3));
   // The round trip to HH:MM rejects out-of-range parts like 12:60, which would otherwise alias 13:00.
   if (time !== `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}` || minutes % 30 || minutes < opens * 60 || minutes >= closes * 60) throw new Refusal(400, `${time} is not a slot within opening hours.`);
   const { today, minutesNow } = berlin(now);
   if (minutes + 30 <= minutesNow) throw new Refusal(409, `The ${time} slot has already ended.`);
-  const start = `${today}T${time}`;
-  if (bookings.some(b => b.table === Number(table) && b.start === start)) throw new Refusal(409, `The ${time} slot on table ${table} is already booked.`);
-  const booking = { table: Number(table), start, spots: Number(spots), players: Number(players), login, browser };
-  bookings.push(booking);
+  return { table: Number(table), time, start: `${today}T${time}` };
+}
+
+function loginOf(form) {
+  const login = field(form, 'login').trim();
+  if (!/^[A-Za-z0-9-]{1,32}$/.test(login)) throw new Refusal(400, 'Enter your 42 login: letters, digits and hyphens only, no spaces.');
+  return login;
+}
+
+function bookingAt(bookings, { table, time, start }) {
+  const booking = bookings.find(b => b.table === table && b.start === start);
+  if (!booking) throw new Refusal(409, `The ${time} slot on table ${table} is free. Book it instead.`);
   return booking;
 }
+
+// Each action validates a form, changes bookings and returns { table, time }, or throws a Refusal.
+// All are synchronous so check-and-store cannot interleave.
+function book(form, ctx, browser) {
+  const slot = slotOf(form, ctx);
+  const login = loginOf(form);
+  const spots = field(form, 'spots');
+  if (spots !== '2' && spots !== '4') throw new Refusal(400, 'Choose singles (2 spots) or doubles (4 spots).');
+  const players = field(form, 'players');
+  if (!/^\d+$/.test(players) || Number(players) < 1 || Number(players) > Number(spots)) {
+    throw new Refusal(400, `Your group must fill between 1 and ${spots} spots.`);
+  }
+  if (ctx.bookings.some(b => b.table === slot.table && b.start === slot.start)) throw new Refusal(409, `The ${slot.time} slot on table ${slot.table} is already booked.`);
+  ctx.bookings.push({ table: slot.table, start: slot.start, spots: Number(spots), players: Number(players), login, browser, joined: [] });
+  return slot;
+}
+
+function join(form, ctx, browser) {
+  const slot = slotOf(form, ctx);
+  const login = loginOf(form);
+  const booking = bookingAt(ctx.bookings, slot);
+  booking.joined ??= [];
+  if ([booking.login, ...booking.joined.map(p => p.login)].some(l => l?.toLowerCase() === login.toLowerCase())) {
+    throw new Refusal(409, `${login} is already in the ${slot.time} game.`);
+  }
+  if (booking.players + booking.joined.length >= booking.spots) throw new Refusal(409, `The ${slot.time} game is full.`);
+  booking.joined.push({ login, browser });
+  return slot;
+}
+
+function cancel(form, ctx, browser) {
+  const slot = slotOf(form, ctx);
+  const booking = bookingAt(ctx.bookings, slot);
+  if (booking.browser !== browser) throw new Refusal(403, 'Only the browser that made this booking can cancel it.');
+  ctx.bookings.splice(ctx.bookings.indexOf(booking), 1);
+  return slot;
+}
+
+function leave(form, ctx, browser) {
+  const slot = slotOf(form, ctx);
+  const login = field(form, 'login');
+  const joined = bookingAt(ctx.bookings, slot).joined ?? [];
+  const player = joined.find(p => p.login === login);
+  if (!player) throw new Refusal(404, `${login} has not joined the ${slot.time} game.`);
+  if (player.browser !== browser) throw new Refusal(403, 'Only the browser that joined can leave.');
+  joined.splice(joined.indexOf(player), 1);
+  return slot;
+}
+
+const actions = new Map([
+  ['/book', [book, 'booked', 'Not booked']],
+  ['/join', [join, 'joined', 'Not joined']],
+  ['/cancel', [cancel, 'cancelled', 'Not cancelled']],
+  ['/leave', [leave, 'left', 'Not left']],
+]);
+const done = { booked: 'Booked $. See you at the table!', joined: 'Joined $. See you at the table!', cancelled: 'Cancelled $. The slot is free again.', left: 'Left $. Your spot is open again.' };
 
 const maxBody = 4096;
 
@@ -116,8 +186,10 @@ export function createApp({
   return http.createServer(async (req, res) => {
     res.setHeader('x-content-type-options', 'nosniff');
     res.setHeader('cache-control', 'no-store');
-    if (req.method === 'POST' && req.url === '/book') {
-      const id = req.headers.cookie?.match(/(?:^|;\s*)browser=([0-9a-f-]{36})(?:;|$)/)?.[1];
+    const id = req.headers.cookie?.match(/(?:^|;\s*)browser=([0-9a-f-]{36})(?:;|$)/)?.[1];
+    const action = req.method === 'POST' && actions.get(req.url);
+    if (action) {
+      const [run, past, refused] = action;
       const browser = id ?? randomUUID();
       if (!id) res.setHeader('set-cookie', `browser=${browser}; HttpOnly; SameSite=Lax; Path=/; Max-Age=31536000`);
       const chunks = [];
@@ -133,17 +205,17 @@ export function createApp({
       } catch { return; } // client went away mid-body; nothing to answer or book
       const form = new URLSearchParams(Buffer.concat(chunks).toString());
       try {
-        const booking = book(form, { now: now(), bookings, opens, closes }, browser);
-        res.writeHead(303, { location: `/table/${booking.table}?booked=${booking.start.slice(11)}` });
+        const { table, time } = run(form, { now: now(), bookings, opens, closes }, browser);
+        res.writeHead(303, { location: `/table/${table}?${past}=${time}` });
         return res.end();
       } catch (error) {
         if (!(error instanceof Refusal)) throw error;
-        const notice = `<p class="notice error" role="alert">Not booked: ${escape(error.message)}</p>`;
+        const notice = `<p class="notice error" role="alert">${refused}: ${escape(error.message)}</p>`;
         const table = form.get('table');
         res.writeHead(error.status, { 'content-type': 'text/html; charset=utf-8' });
         return res.end(table === '1' || table === '2'
-          ? tablePage(Number(table), { now: now(), bookings, opens, closes }, notice)
-          : layout('Not booked', `<h1>Not booked</h1>${notice}<p><a href="/table/1">Go to table 1</a> · <a href="/table/2">table 2</a></p>`));
+          ? tablePage(Number(table), { now: now(), bookings, opens, closes }, notice, browser)
+          : layout(refused, `<h1>${refused}</h1>${notice}<p><a href="/table/1">Go to table 1</a> · <a href="/table/2">table 2</a></p>`));
       }
     }
     if (!['GET', 'HEAD'].includes(req.method)) {
@@ -161,8 +233,9 @@ export function createApp({
     const table = path.match(/^\/table\/([12])$/);
     if (table) {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      const [key, time] = [...url.searchParams].find(([k, v]) => done[k] && /^\d\d:\d\d$/.test(v)) ?? [];
       return res.end(req.method === 'HEAD' ? undefined : tablePage(Number(table[1]), { now: now(), bookings, opens, closes },
-        /^\d\d:\d\d$/.test(url.searchParams.get('booked')) ? `<p class="notice success" role="status">Booked ${url.searchParams.get('booked')}. See you at the table!</p>` : ''));
+        key ? `<p class="notice success" role="status">${done[key].replace('$', time)}</p>` : '', id));
     }
     const asset = assets.get(path);
     if (!asset) {

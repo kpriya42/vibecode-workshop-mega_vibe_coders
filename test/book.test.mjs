@@ -25,7 +25,7 @@ test('singles booking with 1 player stores the booking and shows 1 of 2 spots le
   assert.equal(response.headers.get('location'), '/table/2?booked=14:00');
   assert.equal(bookings.length, 1);
   assert.deepEqual({ ...bookings[0], browser: typeof bookings[0].browser },
-    { table: 2, start: '2026-10-20T14:00', spots: 2, players: 1, login: 'jwosylu', browser: 'string' });
+    { table: 2, start: '2026-10-20T14:00', spots: 2, players: 1, login: 'jwosylu', browser: 'string', joined: [] });
   const html = await (await fetch(origin + response.headers.get('location'))).text();
   const [status, text] = slot(html, '14:00');
   assert.equal(status, 'open');
